@@ -145,6 +145,10 @@ let le_var x = LE_Var x.desc |> add_pos_from x
 %type <AST.stmt> stmts
 %start stmts
 
+(* Parse an expression *)
+%type <AST.expr> expr_only
+%start expr_only
+
 %%
 
 (* ------------------------------------------------------------------------
@@ -756,3 +760,4 @@ let opn [@internal true] := body=stmt; EOF;
     }
 
 let stmts [@internal true] := terminated(stmt_list,EOF)
+let expr_only [@internal true] := terminated(expr, EOF)

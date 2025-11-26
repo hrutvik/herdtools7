@@ -44,6 +44,7 @@ type args = {
   no_stdlib : bool;
   no_stdlib0 : bool;
   v0_use_split_chunks : bool;
+  parse_only : ([ `Expr | `Stmts ] * string) option;
 }
 
 exception Exit of int
@@ -76,6 +77,7 @@ let parse_args () =
   let use_fine_grained_side_effects = ref false in
   let use_conflincting_side_effects_extension = ref false in
   let v0_use_split_chunks = ref false in
+  let parse_only = ref None in
 
   let speclist =
     [
@@ -169,6 +171,12 @@ let parse_args () =
         Arg.Set v0_use_split_chunks,
         " While lexing v0 files, split the files along separator comment \
          lines. Error display might be impacted." );
+      ( "--parse-expr",
+        Arg.String (fun s -> parse_only := Some (`Expr, s)),
+        "expr Parse the supplied expression then exit." );
+      ( "--parse-stmt",
+        Arg.String (fun s -> parse_only := Some (`Stmts, s)),
+        "stmt Parse the supplied statement/block then exit." );
     ]
     |> Arg.align ?limit:None
   in
@@ -206,6 +214,7 @@ let parse_args () =
       no_stdlib = !no_stdlib;
       no_stdlib0 = !no_stdlib0;
       v0_use_split_chunks = !v0_use_split_chunks;
+      parse_only = !parse_only;
     }
   in
 
@@ -239,7 +248,11 @@ let parse_args () =
   in
 
   let () =
-    if ASTUtils.list_is_empty args.files && Option.is_none args.opn then
+    if
+      ASTUtils.list_is_empty args.files
+      && Option.is_none args.opn
+      && Option.is_none args.parse_only
+    then
       let () =
         Printf.eprintf
           "No files supplied! Run `aslref --help` for information on usage.\n"
@@ -267,6 +280,42 @@ let run_with (args : args) : unit =
           end) in
           EP.eprintln e;
           raise (Exit 1)
+  in
+
+  let () =
+    match args.parse_only with
+    | None -> ()
+    | Some (ast_type, code) ->
+        let open Lexing in
+        let open Error in
+        let cannot_parse ?msg lexbuf =
+          fatal_here lexbuf.lex_start_p lexbuf.lex_curr_p (CannotParse msg)
+        in
+        let unknown_symbol lexbuf =
+          fatal_here lexbuf.lex_start_p lexbuf.lex_curr_p UnknownSymbol
+        in
+        let module Parser = Parser.Make (struct end) in
+        let module Lexer = Lexer.Make (struct end) in
+        let parse lex lexbuf =
+          match ast_type with
+          | `Expr -> ignore (Parser.expr_only lex lexbuf)
+          | `Stmts -> ignore (Parser.stmts lex lexbuf)
+        in
+        let () =
+          or_exit @@ fun () ->
+          let lexbuf = Lexing.from_string ~with_positions:true code in
+          let pos_fname = "standalone" in
+          lexbuf.lex_curr_p <- { lexbuf.lex_curr_p with pos_fname };
+          lexbuf.lex_start_p <- { lexbuf.lex_start_p with pos_fname };
+          try parse Lexer.token lexbuf with
+          | Parser.Error error_state -> (
+              try
+                let msg = Parser_errors.message error_state in
+                cannot_parse ~msg lexbuf
+              with Not_found -> cannot_parse lexbuf)
+          | Lexer.LexerError -> unknown_symbol lexbuf
+        in
+        raise (Exit 0)
   in
 
   let extra_main =

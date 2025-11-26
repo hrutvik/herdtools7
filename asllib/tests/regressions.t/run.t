@@ -698,3 +698,18 @@ Bounds checks
   ASL Dynamic error: Mismatch type:
     value 100 does not belong to type integer {0..3}.
   [1]
+
+Standalone parsing
+  $ aslref --parse-expr "a + b"
+  $ aslref --parse-stmt "pass;"
+  $ aslref --parse-stmt "pass; - = TRUE;"
+
+  $ aslref --parse-expr "a + b - c"
+  File standalone, line 1, characters 0 to 5:
+  ASL Grammar error: Cannot parse. Operators `-` and `+` have the same
+    precedence - parenthesise to disambiguate.
+  [1]
+  $ aslref --parse-stmt "TRUE;"
+  File standalone, line 1, characters 0 to 4:
+  ASL Grammar error: Cannot parse.
+  [1]

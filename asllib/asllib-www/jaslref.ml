@@ -57,6 +57,7 @@ let run_asl code version exec =
       no_stdlib = false;
       no_stdlib0 = false;
       v0_use_split_chunks = false;
+      parse_only = None;
     }
   in
 
