@@ -713,3 +713,5 @@ Standalone parsing
   File standalone, line 1, characters 0 to 4:
   ASL Grammar error: Cannot parse.
   [1]
+
+  $ aslref dollar.asl

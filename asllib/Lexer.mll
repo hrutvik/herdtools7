@@ -383,7 +383,7 @@ let string_lit = '"' [^ '"']* '"'
 let bit = ['0' '1' ' ']
 let bits = bit*
 let mask = (bit | 'x' | '(' bit+ ')')*
-let identifier = alpha_ (alpha_|digit)*
+let identifier = alpha_ (alpha_|digit|"$")*
 
 let forbidden_hex_first = '0' 'x' [^'a'-'f' 'A'-'F' '0'-'9']
 let forbidden_hex_remaining = hex_lit ['g'-'z' 'G'-'Z']
