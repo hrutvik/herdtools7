@@ -41,11 +41,9 @@ let run_asl code version exec =
             "web-input.asl" );
         ];
       opn = None;
-      (* … rest of the boolean flags left to their defaults … *)
-      print_ast = false;
-      print_lisp = false;
-      print_serialized = false;
-      print_typed = false;
+      (* … rest of the flags left to their defaults … *)
+      print =
+        { parsed = false; serialized = false; typed = false; lisp = false };
       show_rules = false;
       strictness = (if String.equal _version "v0" then Silence else TypeCheck);
       output_format = Asllib.Error.HumanReadable;

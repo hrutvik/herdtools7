@@ -25,14 +25,18 @@ open Typing
 
 type file_type = NormalV1 | NormalV0 | PatchV1 | PatchV0
 
+type print_t = {
+  mutable parsed : bool;
+  mutable typed : bool;
+  mutable serialized : bool;
+  mutable lisp : bool;
+}
+
 type args = {
   exec : bool;
   files : (file_type * string) list;
   opn : string option;
-  print_ast : bool;
-  print_lisp : bool;
-  print_serialized : bool;
-  print_typed : bool;
+  print : print_t;
   show_rules : bool;
   strictness : strictness;
   output_format : Error.output_format;
@@ -57,10 +61,16 @@ let parse_args () =
   let show_rules = ref false in
   let target_files = ref [] in
   let exec = ref true in
-  let print_ast = ref false in
-  let print_serialized = ref false in
-  let print_typed = ref false in
-  let print_lisp = ref false in
+  let print_args =
+    { parsed = false; typed = false; serialized = false; lisp = false }
+  in
+  let set_print = function
+    | "parsed" -> print_args.parsed <- true
+    | "typed" -> print_args.typed <- true
+    | "serialized" -> print_args.serialized <- true
+    | "list" -> print_args.lisp <- true
+    | _ -> assert false
+  in
   let opn = ref "" in
   let strictness : strictness ref = ref TypeCheck in
   let set_strictness s () = strictness := s in
@@ -82,17 +92,10 @@ let parse_args () =
       ("--exec", Arg.Set exec, " Execute the asl program (default).");
       ("--no-exec", Arg.Clear exec, " Don't execute the asl program.");
       ( "--print",
-        Arg.Set print_ast,
-        " Print the parsed AST to stdout before executing it." );
-      ( "--serialize",
-        Arg.Set print_serialized,
-        " Print the parsed AST to stdout in the serialized format." );
-      ( "--print-typed",
-        Arg.Set print_typed,
-        " Print the parsed AST after typing and before executing it." );
-      ( "--print-lisp",
-        Arg.Set print_lisp,
-        " Print the parsed and typechecked AST in the Lisp object format." );
+        Arg.Symbol ([ "parsed"; "serialized"; "typed"; "lisp" ], set_print),
+        " Print the AST to stdout. Choose between: pretty-printing after \
+         parsing; serialized printing after parsing; pretty-printing after \
+         typing; lisp printing after typing." );
       ( "--format-csv",
         Arg.Unit (fun () -> output_format := Error.CSV),
         " Output the errors in a CSV format." );
@@ -190,10 +193,7 @@ let parse_args () =
       exec = !exec;
       files = !target_files;
       opn = (match !opn with "" -> None | s -> Some s);
-      print_ast = !print_ast;
-      print_serialized = !print_serialized;
-      print_typed = !print_typed;
-      print_lisp = !print_lisp;
+      print = print_args;
       strictness = !strictness;
       show_rules = !show_rules;
       output_format = !output_format;
@@ -294,10 +294,10 @@ let run_with (args : args) : unit =
 
   let ast = List.rev_append extra_main ast in
 
-  let () = if args.print_ast then Format.printf "%a@." PP.pp_t ast in
+  let () = if args.print.parsed then Format.printf "%a@." PP.pp_t ast in
 
   let () =
-    if args.print_serialized then print_string (Serialize.t_to_string ast)
+    if args.print.serialized then print_string (Serialize.t_to_string ast)
   in
 
   let ast =
@@ -324,7 +324,7 @@ let run_with (args : args) : unit =
   let module C = struct
     let output_format = args.output_format
     let check = args.strictness
-    let print_typed = args.print_typed || args.print_lisp
+    let print_typed = args.print.typed || args.print.lisp
     let use_field_getter_extension = args.use_field_getter_extension
     let override_mode = args.override_mode
 
@@ -339,12 +339,12 @@ let run_with (args : args) : unit =
   let typed_ast, static_env = or_exit @@ fun () -> T.type_check_ast ast in
 
   let () =
-    if args.print_typed then
+    if args.print.typed then
       Format.printf "@[<v 2>Typed AST:@ %a@]@." PP.pp_t typed_ast
   in
 
   let () =
-    if args.print_lisp then
+    if args.print.lisp then
       let lisp_ast = ToLisp.of_ast typed_ast in
       let lisp_static_env = ToLisp.of_static_env_global static_env in
       Lispobj.print_obj Format.std_formatter
