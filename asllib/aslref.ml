@@ -73,19 +73,43 @@ let parse_args () =
   in
   let opn = ref "" in
   let strictness : strictness ref = ref TypeCheck in
-  let set_strictness s () = strictness := s in
+  let typing_assoc =
+    ( strictness,
+      [
+        ("none", Silence);
+        ("warn", Warn);
+        ("no-warn", TypeCheckNoWarn);
+        ("strict", TypeCheck);
+      ] )
+  in
   let show_version = ref false in
   let push_file file_type s = target_files := (file_type, s) :: !target_files in
   let output_format = ref Error.HumanReadable in
+  let error_format_assoc =
+    ( output_format,
+      [
+        ("pretty", Error.HumanReadable); ("csv", Error.CSV); ("gnu", Error.GNU);
+      ] )
+  in
   let use_field_getter_extension = ref false in
   let override_mode = ref Permissive in
-  let set_override_mode m () = override_mode := m in
+  let override_mode_assoc =
+    ( override_mode,
+      [
+        ("permissive", Permissive);
+        ("warn-implementations", NoImplementations);
+        ("warn-all-impdefs-overridden", AllImpdefsOverridden);
+      ] )
+  in
   let no_primitives = ref false in
   let no_stdlib = ref false in
   let no_stdlib0 = ref false in
   let use_fine_grained_side_effects = ref false in
   let use_conflincting_side_effects_extension = ref false in
   let v0_use_split_chunks = ref false in
+  let assoc_to_symbol (id, l) =
+    Arg.Symbol (List.map fst l, fun s -> id := List.assoc s l)
+  in
 
   let speclist =
     [
@@ -93,34 +117,21 @@ let parse_args () =
       ("--no-exec", Arg.Clear exec, " Don't execute the asl program.");
       ( "--print",
         Arg.Symbol ([ "parsed"; "serialized"; "typed"; "lisp" ], set_print),
-        " Print the AST to stdout. Choose between: pretty-printing after \
-         parsing; serialized printing after parsing; pretty-printing after \
-         typing; lisp printing after typing." );
-      ( "--format-csv",
-        Arg.Unit (fun () -> output_format := Error.CSV),
-        " Output the errors in a CSV format." );
-      ( "--gnu-errors",
-        Arg.Unit (fun () -> output_format := Error.GNU),
-        " Output the errors using the GNU convention." );
+        " Print the AST to stdout, either pretty-printed after parsing, \
+         serialized after parsing, pretty-printed after typing, or lisp after \
+         typing." );
+      ( "--error-format",
+        assoc_to_symbol error_format_assoc,
+        " Output format for errors. Pretty-printed (default), CSV, or \
+         following the GNU convention." );
       ( "--opn",
         Arg.Set_string opn,
         "OPN_FILE Parse the following opn file as main." );
-      ( "--no-type-check",
-        Arg.Unit (set_strictness Silence),
-        " Do not type-check, only perform minimal type-inference. Default for \
-         v0." );
-      ( "--type-check-warn",
-        Arg.Unit (set_strictness Warn),
-        " Do not type-check, only perform minimal type-inference. Log typing \
-         errors on stderr." );
-      ( "--type-check-strict",
-        Arg.Unit (set_strictness TypeCheck),
-        " Perform type-checking, Fatal on any type-checking error. Default for \
-         v1." );
-      ( "--type-check-no-warn",
-        Arg.Unit (set_strictness TypeCheckNoWarn),
-        " Perform type-checking, fatal on any type-checking error, but don't \
-         show any warnings." );
+      ( "--type-check",
+        assoc_to_symbol typing_assoc,
+        "Type checking mode. Do not type-check (default for ASL0), only warn, \
+         only report errors and not warnings, strict mode (default for ASL1)."
+      );
       ( "--v0-use-field-getter-extension",
         Arg.Set use_field_getter_extension,
         " Instruct the type-checker to use the field getter extension." );
@@ -148,16 +159,11 @@ let parse_args () =
         Arg.String (push_file NormalV1),
         "filename Use ASLv1 parser for this file. (default)" );
       ("--version", Arg.Set show_version, " Print version and exit.");
-      ( "--overriding-permissive",
-        Arg.Unit (set_override_mode Permissive),
-        " Allow both `impdef` and `implementation` functions (default)." );
-      ( "--overriding-warn-implementations",
-        Arg.Unit (set_override_mode NoImplementations),
-        " Warn if any `implementation` functions are defined." );
-      ( "--overriding-warn-all-impdefs-overridden",
-        Arg.Unit (set_override_mode AllImpdefsOverridden),
-        " Warn if any `impdef` functions are not overridden by corresponding \
-         `implementation`s." );
+      ( "--overriding",
+        assoc_to_symbol override_mode_assoc,
+        " Overriding mode. Allow both `impdef` and `implementation` functions \
+         (default); warn if there are any `implementation` functions, or warn \
+         if any `impdef` functions are not overridden." );
       ( "--no-primitives",
         Arg.Set no_primitives,
         " Do not use internal definitions for standard library subprograms." );

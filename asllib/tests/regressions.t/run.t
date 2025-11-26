@@ -478,7 +478,7 @@ Required tests:
   $ aslref subtypes-with.asl
   $ aslref tuples.asl
   $ aslref declaration-primitive-local.asl
-  $ aslref --no-type-check -0 typing-assign-v0.asl
+  $ aslref --type-check none -0 typing-assign-v0.asl
   $ aslref constant-functions.asl
   $ aslref alt-mask-syntax.asl
   $ aslref subprogram-global-name-clash.asl
@@ -502,7 +502,7 @@ Required tests:
   ASL Grammar error: Cannot parse.
   [1]
 
-  $ aslref --no-type-check throw-local-env.asl
+  $ aslref --type-check none throw-local-env.asl
   File throw-local-env.asl, line 10, characters 13 to 14:
         assert y == 5; // y should not be found in dynamic environment here
                ^
@@ -516,7 +516,7 @@ Required tests:
   ASL Static error: Undefined identifier: 'bar'
   [1]
 
-  $ aslref --gnu-errors gnu-errors.asl
+  $ aslref --error-format gnu gnu-errors.asl
   aslref: gnu-errors.asl:1:0: ASL Warning: the recursive function fact has no recursive limit annotation.
   aslref: :0:-1: ASL Dynamic error: Mismatch type: value 11 does not belong to type integer {0..9}.
   [1]
