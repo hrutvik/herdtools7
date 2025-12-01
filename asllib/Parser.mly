@@ -759,5 +759,5 @@ let opn [@internal true] := body=stmt; EOF;
       ]
     }
 
-let stmts [@internal true] := terminated(stmt_list,EOF)
+let stmts [@internal true] := terminated(stmt_list | { add_dummy_annotation ~version S_Pass }, EOF)
 let expr_only [@internal true] := terminated(expr, EOF)
