@@ -2756,12 +2756,10 @@ module Annotate (C : ANNOTATE_CONFIG) : S = struct
   let add_immutable_expression env ldk typed_e_opt x =
     match (ldk, typed_e_opt) with
     | LDK_Let, Some (_, e, ses_e)
-      when should_remember_immutable_expression ses_e -> (
-        match StaticModel.normalize_opt env e with
-        | Some e' ->
-            add_local_immutable_expr x e' env
-            |: TypingRule.AddImmutableExpression
-        | None -> env)
+      when should_remember_immutable_expression ses_e ->
+        let to_remember = StaticModel.try_normalize env e in
+        add_local_immutable_expr x to_remember env
+        |: TypingRule.AddImmutableExpression
     | _ -> env
   (* End *)
 

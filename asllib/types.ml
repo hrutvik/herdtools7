@@ -166,6 +166,34 @@ module Domain = struct
     | Some i -> i
   (* End *)
 
+  let rec expand env (e : expr) : expr =
+    let here = add_pos_from e in
+    match e.desc with
+    | E_Var s -> (
+        try E_Literal (StaticEnv.lookup_constant env s) |> here
+        with Not_found -> (
+          try StaticEnv.lookup_immutable_expr env s
+          with Not_found -> (
+            let t =
+              try StaticEnv.type_of env s
+              with Not_found ->
+                Error.fatal_from e (UndefinedIdentifier (Static, s))
+            in
+            let ty1 = make_anonymous env t in
+            match ty1.desc with
+            | T_Int (WellConstrained ([ Constraint_Exact e ], _)) ->
+                expand env e
+            | _ -> e)))
+    | E_Binop (op, e1, e2) -> E_Binop (op, expand env e1, expand env e2) |> here
+    | E_Unop (op, e) -> E_Unop (op, expand env e) |> here
+    | E_ATC (e', _) -> expand env e'
+    | _ -> e
+
+  let expand_constraint env = function
+    | Constraint_Exact e -> Constraint_Exact (expand env e)
+    | Constraint_Range (bot, top) ->
+        Constraint_Range (expand env bot, expand env top)
+
   (** Constructs the symbolic domain of an integer constraint. *)
   let symdom_of_constraint env c =
     try
@@ -183,7 +211,7 @@ module Domain = struct
               IntSet.add interval IntSet.empty
       in
       Finite interval
-    with StaticEvaluationTop -> ConstrainedDom c
+    with StaticEvaluationTop -> ConstrainedDom (expand_constraint env c)
 
   (* Constructs the symbolic domain of a bitvector type's width expression *)
   let symdom_of_width_expr e =
