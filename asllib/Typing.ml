@@ -1407,9 +1407,20 @@ module Annotate (C : ANNOTATE_CONFIG) : S = struct
 
   (* Begin SymbolicConstrainedInteger *)
   and annotate_symbolic_constrained_integer ~(loc : 'a annotated) env e =
-    let t, e', ses = annotate_symbolically_evaluable_expr env e in
-    let+ () = check_constrained_integer ~loc env t in
-    (StaticModel.try_normalize env e', ses)
+    let _, e, ses = annotate_expr env e in
+    let+ () = check_symbolically_evaluable e ses in
+    let debug = false in
+    let () =
+      if debug then Format.eprintf "before normalise: %a@." PP.pp_expr e
+    in
+    let e' = StaticModel.try_normalize env e in
+    let () =
+      if debug then Format.eprintf "after normalise: %a@." PP.pp_expr e'
+    in
+    let t', _, _ = annotate_expr env e' in
+    let () = if debug then Format.eprintf "type: %a@." PP.pp_ty t' in
+    let+ () = check_constrained_integer ~loc env t' in
+    (e', ses)
   (* End *)
 
   (* Begin AnnotateConstraint *)
