@@ -373,7 +373,7 @@ def one_instruction_to_string(i_path: Path) -> str:
         root, ".//ps_section/ps/pstext[@section='Postdecode']", warn=False
     )
 
-    instr_id = i_path.stem
+    instr_id = root.get("id", default=i_path.stem)
     instruction_name = root.get(
         "title", default="Instruction without a name (could not parse it from the xml)"
     )
@@ -388,6 +388,7 @@ def one_instruction_to_string(i_path: Path) -> str:
             SEPARATOR_LINE,
             "",
             *(
+                f"// {instr_id}\n" +
                 read_one_encoding(
                     instr_id, iclass, post_decode, execute, add_encoding_id
                 )
