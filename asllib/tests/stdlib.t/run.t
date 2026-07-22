@@ -1,6 +1,11 @@
 Tests using ASLRef OCaml primitives for some stdlib functions
   $ aslref uint.asl
   $ aslref sint.asl
+  : All values in constraints {-1} would fail with op ^, operation will always
+  fail.
+  ASL Type error: Illegal application of operator ^ on types integer {2}
+    and integer {-1}.
+  [1]
   $ aslref pow2.asl
   $ aslref log2.asl
   $ aslref ilog2.asl
@@ -57,6 +62,12 @@ Checking that --no-primitives option actually removes OCaml primitives
 Tests using ASL stdlib only
   $ aslref --no-primitives uint.asl
   $ aslref --no-primitives sint.asl
+  File ASL Standard Library, line 34, characters 75 to 82: All values in
+  constraints {-1} would fail with op ^, operation will always fail.
+  File ASL Standard Library, line 34, characters 75 to 82:
+  ASL Type error: Illegal application of operator ^ on types integer {2}
+    and integer {-1}.
+  [1]
   $ aslref --no-primitives pow2.asl
   $ aslref --no-primitives log2.asl
   $ aslref --no-primitives ilog2.asl

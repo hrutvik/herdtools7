@@ -68,49 +68,6 @@ let sum = function
   | [ x ] -> x
   | h :: t -> List.fold_left plus h t
 
-(* Begin SlicesWidth *)
-let slices_width env =
-  let slice_width = function
-    | Slice_Single _ -> one_expr
-    | Slice_Star (_, e) | Slice_Length (_, e) -> e
-    | Slice_Range (e1, e2) -> plus one_expr (minus e1 e2)
-  in
-  fun li -> List.map slice_width li |> sum |> StaticModel.try_normalize env
-(* End *)
-
-let width_plus env acc w = plus acc w |> StaticModel.try_normalize env
-
-(* Begin RenameTyEqs *)
-let rename_ty_eqs : env -> (AST.identifier * AST.expr) list -> AST.ty -> AST.ty
-    =
-  let subst_expr_normalize env eqs e =
-    subst_expr eqs e |> StaticModel.try_normalize env
-  in
-  let subst_constraint env eqs = function
-    | Constraint_Exact e -> Constraint_Exact (subst_expr_normalize env eqs e)
-    | Constraint_Range (e1, e2) ->
-        Constraint_Range
-          (subst_expr_normalize env eqs e1, subst_expr_normalize env eqs e2)
-  in
-  let subst_constraints env eqs = List.map (subst_constraint env eqs) in
-  let rec rename env eqs ty =
-    let loc = to_pos ty in
-    let here desc = add_pos_from ~loc desc in
-    match ty.desc with
-    | T_Bits (e, fields) ->
-        T_Bits (subst_expr_normalize env eqs e, fields) |> here
-    | T_Int (WellConstrained (constraints, precision)) ->
-        let constraints = subst_constraints env eqs constraints in
-        well_constrained ~loc ~precision constraints
-    | T_Int (Parameterized name) ->
-        let e = E_Var name |> here |> subst_expr_normalize env eqs in
-        integer_exact ~loc e
-    | T_Tuple tys -> T_Tuple (List.map (rename env eqs) tys) |> here
-    | _ -> ty
-  in
-  rename |: TypingRule.RenameTyEqs
-(* End *)
-
 (* Begin Lit *)
 let annotate_literal env = function
   | L_Int _ as v -> integer_exact' (literal v)
@@ -690,77 +647,6 @@ module Annotate (C : ANNOTATE_CONFIG) : S = struct
     | `STR_CONCAT | `BIC ->
         false
 
-  (* Begin ApplyBinopTypes *)
-  let rec apply_binop_types ~loc env op t1 t2 : ty =
-    let () =
-      if false then
-        Format.eprintf "Checking binop %s between %a and %a@."
-          (PP.binop_to_string op) PP.pp_ty t1 PP.pp_ty t2
-    in
-    let here x = add_pos_from ~loc x in
-    (match (op, (t1.desc, t2.desc)) with
-      | _, (T_Named _, _) | _, (_, T_Named _) ->
-          let t1_anon = Types.make_anonymous env t1
-          and t2_anon = Types.make_anonymous env t2 in
-          apply_binop_types ~loc env op t1_anon t2_anon
-      | (`BAND | `BOR | `BEQ | `IMPL), (T_Bool, T_Bool) -> T_Bool |> here
-      | (`AND | `OR | `XOR | `ADD | `SUB), (T_Bits (w1, _), T_Bits (w2, _))
-        when bitwidth_equal (StaticModel.equal_in_env env) w1 w2 ->
-          T_Bits (w1, []) |> here
-      | `BV_CONCAT, (T_Bits (w1, _), T_Bits (w2, _)) ->
-          T_Bits (width_plus env w1 w2, []) |> here
-      | `STR_CONCAT, _ ->
-          let+ () =
-            check_true (Types.is_singular env t1) @@ fun () ->
-            fatal_from ~loc (Error.ExpectedSingularType t1)
-          in
-          let+ () =
-            check_true (Types.is_singular env t2) @@ fun () ->
-            fatal_from ~loc (Error.ExpectedSingularType t2)
-          in
-          T_String |> here
-      | (`ADD | `SUB), (T_Bits (w, _), T_Int _) -> T_Bits (w, []) |> here
-      | (`LE | `GE | `GT | `LT), (T_Int _, T_Int _ | T_Real, T_Real)
-      | ( (`EQ | `NE),
-          ( T_Int _, T_Int _
-          | T_Bool, T_Bool
-          | T_Real, T_Real
-          | T_String, T_String ) ) ->
-          T_Bool |> here
-      | (`EQ | `NE), (T_Bits (w1, _), T_Bits (w2, _))
-        when bitwidth_equal (StaticModel.equal_in_env env) w1 w2 ->
-          T_Bool |> here
-      | (`EQ | `NE), (T_Enum li1, T_Enum li2)
-        when List.equal String.equal li1 li2 ->
-          T_Bool |> here
-      | (#StaticOperations.int3_binop as op), (T_Int c1, T_Int c2) -> (
-          match (c1, c2) with
-          | PendingConstrained, _ | _, PendingConstrained -> assert false
-          | UnConstrained, _ | _, UnConstrained -> T_Int UnConstrained |> here
-          | Parameterized _, _ | _, Parameterized _ ->
-              let t1_well_constrained = Types.to_well_constrained t1
-              and t2_well_constrained = Types.to_well_constrained t2 in
-              apply_binop_types ~loc env op t1_well_constrained
-                t2_well_constrained
-          | WellConstrained (cs1, p1), WellConstrained (cs2, p2) -> (
-              best_effort integer @@ fun _ ->
-              try
-                let cs, p3 =
-                  SOp.annotate_constraint_binop ~loc env op cs1 cs2
-                in
-                let precision = precision_join p1 (precision_join p2 p3) in
-                well_constrained ~loc ~precision cs
-              with TypingAssumptionFailed ->
-                fatal_from ~loc (Error.BadTypesForBinop (op, t1, t2))))
-      | `MUL, (T_Real, T_Int _ | T_Int _, T_Real)
-      | (`ADD | `SUB | `MUL), (T_Real, T_Real)
-      | `POW, (T_Real, T_Int _)
-      | `RDIV, (T_Real, T_Real) ->
-          T_Real |> here
-      | _ -> fatal_from ~loc (Error.BadTypesForBinop (op, t1, t2)))
-    |: TypingRule.ApplyBinopTypes
-  (* End *)
-
   (* Begin ApplyUnopType *)
   let apply_unop_type ~loc env op t =
     let here desc = add_pos_from ~loc desc in
@@ -1249,6 +1135,124 @@ module Annotate (C : ANNOTATE_CONFIG) : S = struct
         (BitField_Type (name, slices1, ty'), ses) |: TypingRule.TBitField
   (* End *)
 
+  and try_normalize env e =
+    let e = StaticModel.try_normalize env e in
+    let _, e, _ = annotate_expr env e in
+    e
+
+  (* Begin SlicesWidth *)
+  and slices_width env =
+    let slice_width = function
+      | Slice_Single _ -> one_expr
+      | Slice_Star (_, e) | Slice_Length (_, e) -> e
+      | Slice_Range (e1, e2) -> plus one_expr (minus e1 e2)
+    in
+    fun li -> List.map slice_width li |> sum |> try_normalize env
+  (* End *)
+
+  and width_plus env acc w = plus acc w |> try_normalize env
+
+  (* Begin RenameTyEqs *)
+  and rename_ty_eqs env : (AST.identifier * AST.expr) list -> AST.ty -> AST.ty =
+    let subst_expr_normalize env eqs e =
+      subst_expr eqs e |> try_normalize env
+    in
+    let subst_constraint env eqs = function
+      | Constraint_Exact e -> Constraint_Exact (subst_expr_normalize env eqs e)
+      | Constraint_Range (e1, e2) ->
+          Constraint_Range
+            (subst_expr_normalize env eqs e1, subst_expr_normalize env eqs e2)
+    in
+    let subst_constraints env eqs = List.map (subst_constraint env eqs) in
+    let rec rename env eqs ty =
+      let loc = to_pos ty in
+      let here desc = add_pos_from ~loc desc in
+      match ty.desc with
+      | T_Bits (e, fields) ->
+          T_Bits (subst_expr_normalize env eqs e, fields) |> here
+      | T_Int (WellConstrained (constraints, precision)) ->
+          let constraints = subst_constraints env eqs constraints in
+          well_constrained ~loc ~precision constraints
+      | T_Int (Parameterized name) ->
+          let e = E_Var name |> here |> subst_expr_normalize env eqs in
+          integer_exact ~loc e
+      | T_Tuple tys -> T_Tuple (List.map (rename env eqs) tys) |> here
+      | _ -> ty
+    in
+    rename env |: TypingRule.RenameTyEqs
+  (* End *)
+
+  (* Begin ApplyBinopTypes *)
+  and apply_binop_types ~loc env op t1 t2 : ty =
+    let () =
+      if false then
+        Format.eprintf "Checking binop %s between %a and %a@."
+          (PP.binop_to_string op) PP.pp_ty t1 PP.pp_ty t2
+    in
+    let here x = add_pos_from ~loc x in
+    (match (op, (t1.desc, t2.desc)) with
+      | _, (T_Named _, _) | _, (_, T_Named _) ->
+          let t1_anon = Types.make_anonymous env t1
+          and t2_anon = Types.make_anonymous env t2 in
+          apply_binop_types ~loc env op t1_anon t2_anon
+      | (`BAND | `BOR | `BEQ | `IMPL), (T_Bool, T_Bool) -> T_Bool |> here
+      | (`AND | `OR | `XOR | `ADD | `SUB), (T_Bits (w1, _), T_Bits (w2, _))
+        when bitwidth_equal (StaticModel.equal_in_env env) w1 w2 ->
+          T_Bits (w1, []) |> here
+      | `BV_CONCAT, (T_Bits (w1, _), T_Bits (w2, _)) ->
+          T_Bits (width_plus env w1 w2, []) |> here
+      | `STR_CONCAT, _ ->
+          let+ () =
+            check_true (Types.is_singular env t1) @@ fun () ->
+            fatal_from ~loc (Error.ExpectedSingularType t1)
+          in
+          let+ () =
+            check_true (Types.is_singular env t2) @@ fun () ->
+            fatal_from ~loc (Error.ExpectedSingularType t2)
+          in
+          T_String |> here
+      | (`ADD | `SUB), (T_Bits (w, _), T_Int _) -> T_Bits (w, []) |> here
+      | (`LE | `GE | `GT | `LT), (T_Int _, T_Int _ | T_Real, T_Real)
+      | ( (`EQ | `NE),
+          ( T_Int _, T_Int _
+          | T_Bool, T_Bool
+          | T_Real, T_Real
+          | T_String, T_String ) ) ->
+          T_Bool |> here
+      | (`EQ | `NE), (T_Bits (w1, _), T_Bits (w2, _))
+        when bitwidth_equal (StaticModel.equal_in_env env) w1 w2 ->
+          T_Bool |> here
+      | (`EQ | `NE), (T_Enum li1, T_Enum li2)
+        when List.equal String.equal li1 li2 ->
+          T_Bool |> here
+      | (#StaticOperations.int3_binop as op), (T_Int c1, T_Int c2) -> (
+          match (c1, c2) with
+          | PendingConstrained, _ | _, PendingConstrained -> assert false
+          | UnConstrained, _ | _, UnConstrained -> T_Int UnConstrained |> here
+          | Parameterized _, _ | _, Parameterized _ ->
+              let t1_well_constrained = Types.to_well_constrained t1
+              and t2_well_constrained = Types.to_well_constrained t2 in
+              apply_binop_types ~loc env op t1_well_constrained
+                t2_well_constrained
+          | WellConstrained (cs1, p1), WellConstrained (cs2, p2) -> (
+              best_effort integer @@ fun _ ->
+              try
+                let cs, p3 =
+                  SOp.annotate_constraint_binop ~loc env op cs1 cs2
+                in
+                let precision = precision_join p1 (precision_join p2 p3) in
+                well_constrained ~loc ~precision cs
+              with TypingAssumptionFailed ->
+                fatal_from ~loc (Error.BadTypesForBinop (op, t1, t2))))
+      | `MUL, (T_Real, T_Int _ | T_Int _, T_Real)
+      | (`ADD | `SUB | `MUL), (T_Real, T_Real)
+      | `POW, (T_Real, T_Int _)
+      | `RDIV, (T_Real, T_Real) ->
+          T_Real |> here
+      | _ -> fatal_from ~loc (Error.BadTypesForBinop (op, t1, t2)))
+    |: TypingRule.ApplyBinopTypes
+  (* End *)
+
   (* Begin TBitFields *)
   and annotate_bitfields ~loc env e_width bitfields =
     let+ () =
@@ -1408,7 +1412,7 @@ module Annotate (C : ANNOTATE_CONFIG) : S = struct
   and annotate_symbolic_constrained_integer ~(loc : 'a annotated) env e =
     let t, e', ses = annotate_symbolically_evaluable_expr env e in
     let+ () = check_constrained_integer ~loc env t in
-    (StaticModel.try_normalize env e', ses)
+    (try_normalize env e', ses)
   (* End *)
 
   (* Begin AnnotateConstraint *)
@@ -2543,7 +2547,7 @@ module Annotate (C : ANNOTATE_CONFIG) : S = struct
               annotate_slices env slices ~loc
             in
             let width =
-              slices_width env slices_annotated |> StaticModel.try_normalize env
+              slices_width env slices_annotated |> try_normalize env
             in
             let t = T_Bits (width, []) |> here in
             let+ () = check_type_satisfies ~loc env t_e t in
@@ -2994,8 +2998,8 @@ module Annotate (C : ANNOTATE_CONFIG) : S = struct
           | T_Int UnConstrained, T_Int _ | T_Int _, T_Int UnConstrained ->
               UnConstrained
           | T_Int _, T_Int _ ->
-              let start_n = StaticModel.try_normalize env start_e'
-              and end_n = StaticModel.try_normalize env end_e' in
+              let start_n = try_normalize env start_e'
+              and end_n = try_normalize env end_e' in
               let e_bot, e_top =
                 match dir with
                 | Up -> (start_n, end_n)
