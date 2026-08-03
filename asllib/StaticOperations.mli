@@ -13,12 +13,14 @@ val constraint_binop :
 
 module type CONFIG = sig
   val fail : string -> 'a
-  val warn_from : loc:_ t_annotated -> Error.warning_desc -> unit
+
+  val warn_from :
+    loc:(unit, no_type_annotation) t_annotated -> Error.warning_desc -> unit
 end
 
 module Make : functor (C : CONFIG) -> sig
   val annotate_constraint_binop :
-    loc:_ t_annotated ->
+    loc:(unit, no_type_annotation) t_annotated ->
     StaticEnv.env ->
     int3_binop ->
     int_constraint list ->
@@ -29,3 +31,4 @@ end
 (* Used by asllib/tests/ConstraintBinops.ml *)
 
 val filter_reduce_constraint_div : int_constraint -> int_constraint option
+val removing_values_loc : unit annotated option ref

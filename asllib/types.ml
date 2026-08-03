@@ -281,7 +281,9 @@ module Domain = struct
       | E_Binop ((#StaticOperations.int3_binop as op), e1, e2) -> (
           let s1 = approx_expr approx env e1 |> intset_to_constraints in
           let s2 = approx_expr approx env e2 |> intset_to_constraints in
-          let s', plf = approx_constraint_binop approx ~loc:e env op s1 s2 in
+          let s', plf =
+            approx_constraint_binop approx ~loc:(to_pos e) env op s1 s2
+          in
           match (plf, approx) with
           | Precision_Full, _ | Precision_Lost _, Under ->
               approx_constraints approx env s'

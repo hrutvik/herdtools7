@@ -1668,11 +1668,9 @@ module Annotate (C : ANNOTATE_CONFIG) : S = struct
       match (call_type, func_sig.return_type) with
       | (ST_Function | ST_Getter), Some ty ->
           let renamed_ty = rename_ty_eqs env eqs ty in
-          let ret_ty =
-            match C.asl1_revision with
-            | EAC1 | EAC2 -> renamed_ty
-            | DEV -> annotate_type ~loc env renamed_ty |> fst
-          in
+          let () = StaticOperations.removing_values_loc := Some loc in
+          let ret_ty, _ = annotate_type ~loc env renamed_ty in
+          let () = StaticOperations.removing_values_loc := None in
           Some ret_ty
       | (ST_Procedure | ST_Setter), None -> None
       | _ ->

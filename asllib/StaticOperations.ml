@@ -180,8 +180,12 @@ let filter_reduce_constraint_div =
 
 module type CONFIG = sig
   val fail : string -> 'a
-  val warn_from : loc:_ t_annotated -> Error.warning_desc -> unit
+
+  val warn_from :
+    loc:(unit, no_type_annotation) t_annotated -> Error.warning_desc -> unit
 end
+
+let removing_values_loc : unit annotated option ref = ref None
 
 module Make (C : CONFIG) = struct
   let list_filter_map_modified f =
@@ -249,6 +253,9 @@ module Make (C : CONFIG) = struct
     | _ ->
         let () =
           if modified then
+            let loc =
+              match !removing_values_loc with Some loc -> loc | None -> loc
+            in
             C.warn_from ~loc
               Error.(
                 RemovingValuesFromConstraints
