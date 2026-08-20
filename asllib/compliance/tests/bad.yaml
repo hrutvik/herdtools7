@@ -1,0 +1,10 @@
+mode: exec
+outcome: FAILURE
+output: |
+  Test1
+  Test2
+error: DE_UN
+error_line: 1
+info: |
+  ASDF
+  BASDF
